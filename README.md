@@ -11,6 +11,7 @@
 - 数据查询：HTTP + MCP（wx-cli 风格接口）
 - 数据源：内置 `wcdb_api` 兼容查询链路（非外部 DLL）
 
+
 ## GitHub 自动构建产物
 
 当前 `Release` 工作流会自动构建以下平台与架构：
