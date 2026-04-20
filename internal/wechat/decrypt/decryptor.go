@@ -7,6 +7,7 @@ import (
 
 	"github.com/sjzar/chatlog/internal/errors"
 	"github.com/sjzar/chatlog/internal/wechat/decrypt/darwin"
+	windecrypt "github.com/sjzar/chatlog/internal/wechat/decrypt/windows"
 )
 
 // Decryptor 定义数据库解密的接口
@@ -39,6 +40,8 @@ func NewDecryptor(platform string, version int) (Decryptor, error) {
 	switch {
 	case platform == "darwin" && version == 4:
 		return darwin.NewV4Decryptor(), nil
+	case platform == "windows" && version == 4:
+		return windecrypt.NewV4Decryptor(), nil
 	default:
 		return nil, errors.PlatformUnsupported(platform, version)
 	}

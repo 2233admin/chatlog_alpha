@@ -3,57 +3,138 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
     branches:
       - main
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-
-env:
-  IMAGE_NAME: ${{ github.repository }}
+      - "**.md"
+      - "docs/**"
 
 jobs:
-  release:
-    name: Release Binary
+  build-macos:
+    name: Build macOS (amd64, arm64)
     runs-on: macos-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Fix git permissions
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Setup GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - name: Build Binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=1 GOOS=darwin GOARCH="${arch}" \
+              go build -trimpath -ldflags "-s -w -X github.com/sjzar/chatlog/pkg/version.Version=${GITHUB_REF_NAME}" \
+              -o "dist/chatlog-darwin-${arch}" .
+          done
+
+      - name: Package Archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          for arch in amd64 arm64; do
+            archive="release/chatlog_${GITHUB_REF_NAME}_darwin_${arch}.zip"
+            /usr/bin/zip -j "${archive}" "dist/chatlog-darwin-${arch}" LICENSE README.md
+          done
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          version: latest
-          install-only: true
+          name: release-macos
+          path: |
+            dist/chatlog-darwin-*
+            release/*.zip
 
-      - name: Run GoReleaser (Release)
+  build-windows:
+    name: Build Windows (amd64, arm64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup MSYS2 (for CGO amd64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+
+      - name: Build Binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          $env:CC = "C:\msys64\mingw64\bin\gcc.exe"
+          $env:CGO_ENABLED = "1"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags "-s -w -X github.com/sjzar/chatlog/pkg/version.Version=$env:GITHUB_REF_NAME" -o "dist/chatlog-windows-amd64.exe" .
+
+          # windows/arm64 在 CI 中使用非 cgo 构建，语音转 MP3 依赖 cgo，运行时会走提示性兜底。
+          Remove-Item Env:CC -ErrorAction SilentlyContinue
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "arm64"
+          go build -trimpath -ldflags "-s -w -X github.com/sjzar/chatlog/pkg/version.Version=$env:GITHUB_REF_NAME" -o "dist/chatlog-windows-arm64.exe" .
+
+      - name: Package Archives
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path dist/chatlog-windows-amd64.exe,LICENSE,README.md -DestinationPath release/chatlog_${env:GITHUB_REF_NAME}_windows_amd64.zip -Force
+          Compress-Archive -Path dist/chatlog-windows-arm64.exe,LICENSE,README.md -DestinationPath release/chatlog_${env:GITHUB_REF_NAME}_windows_arm64.zip -Force
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/chatlog-windows-*.exe
+            release/*.zip
+
+  publish:
+    name: Publish Release Assets
+    runs-on: ubuntu-latest
+    needs:
+      - build-macos
+      - build-windows
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Collect Files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p publish
+          find release-assets -type f \( -name "*.zip" -o -name "*.exe" -o -name "chatlog-darwin-*" \) -exec cp {} publish/ \;
+          ls -lah publish
+
+      - name: Publish Tagged Release
         if: startsWith(github.ref, 'refs/tags/')
-        run: goreleaser release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/*
 
-      - name: Run GoReleaser (Main Branch Build)
+      - name: Publish Latest Snapshot
         if: github.ref == 'refs/heads/main'
-        run: goreleaser release --snapshot --clean
-
-      - name: Update Latest Release
-        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
@@ -61,17 +142,4 @@ jobs:
           body: "这是来自 main 分支的最新自动构建版本。仅供开发测试使用。"
           prerelease: true
           make_latest: false
-          files: |
-            dist/**/chatlog
-            dist/**/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Artifacts
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
-        with:
-          name: chatlog-snapshot-macos
-          path: |
-            dist/**/chatlog
-            dist/**/*.zip
+          files: publish/*

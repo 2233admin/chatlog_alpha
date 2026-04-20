@@ -6,6 +6,7 @@ import (
 	"github.com/sjzar/chatlog/internal/errors"
 	"github.com/sjzar/chatlog/internal/wechat/decrypt"
 	"github.com/sjzar/chatlog/internal/wechat/key/darwin"
+	"github.com/sjzar/chatlog/internal/wechat/key/windows"
 	"github.com/sjzar/chatlog/internal/wechat/model"
 )
 
@@ -26,6 +27,8 @@ func NewExtractor(platform string, version int) (Extractor, error) {
 	switch {
 	case platform == "darwin" && version == 4:
 		return darwin.NewV4Extractor(), nil
+	case platform == "windows" && version == 4:
+		return windows.NewV4Extractor(), nil
 	default:
 		return nil, errors.PlatformUnsupported(platform, version)
 	}

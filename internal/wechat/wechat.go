@@ -253,7 +253,7 @@ func (a *Account) GetKey(ctx context.Context) (string, string, error) {
 		return "", "", err
 	}
 
-	if isV4 && process.DataDir == "" && a.Platform == "darwin" {
+	if isV4 && process.DataDir == "" {
 		log.Info().Msg("检测到V4版本且数据目录未就绪，等待微信登录...")
 		for i := 0; i < 30; i++ {
 			time.Sleep(1 * time.Second)
@@ -305,9 +305,6 @@ func (a *Account) GetKey(ctx context.Context) (string, string, error) {
 func (a *Account) GetImageKey(ctx context.Context) (string, error) {
 	if a.Version != 4 {
 		return "", fmt.Errorf("仅支持微信V4版本获取图片密钥")
-	}
-	if a.Platform != "darwin" {
-		return "", fmt.Errorf("当前平台暂不支持获取图片密钥: %s", a.Platform)
 	}
 
 	// 刷新进程状态

@@ -49,8 +49,8 @@ func (s *Service) Start() error {
 	dbPath := s.conf.GetWorkDir()
 	platform := s.conf.GetPlatform()
 	version := s.conf.GetVersion()
-	if platform == "darwin" && version == 4 {
-		// darwin v4 使用内置 wcdb_api 兼容查询链路，直接面向原始 db_storage。
+	if (platform == "darwin" || platform == "windows") && version == 4 {
+		// v4 使用内置 wcdb_api 兼容查询链路，直接面向原始 db_storage。
 		dbPath = s.conf.GetDataDir()
 	}
 	db, err := wechatdb.New(dbPath, platform, version, s.conf.GetWalEnabled(), s.conf.GetDataKey())

@@ -55,6 +55,8 @@ func New(path string, platform string, version int, walEnabled bool, dataKey str
 	switch {
 	case platform == "darwin" && version == 4:
 		return wcdb.New(path, dataKey)
+	case platform == "windows" && version == 4:
+		return wcdb.New(path, dataKey)
 	default:
 		return nil, errors.PlatformUnsupported(platform, version)
 	}

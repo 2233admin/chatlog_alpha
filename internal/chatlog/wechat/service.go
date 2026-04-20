@@ -636,7 +636,8 @@ type allKeysEntry struct {
 
 func (s *Service) getDataKeyForDB(dbFile string) string {
 	fallback := strings.TrimSpace(s.conf.GetDataKey())
-	if s.conf.GetVersion() != 4 || s.conf.GetPlatform() != "darwin" {
+	platform := s.conf.GetPlatform()
+	if s.conf.GetVersion() != 4 || (platform != "darwin" && platform != "windows") {
 		return fallback
 	}
 

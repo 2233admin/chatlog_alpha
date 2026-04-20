@@ -13,7 +13,8 @@ type Process struct {
 
 // 平台常量定义
 const (
-	PlatformDarwin = "darwin"
+	PlatformDarwin  = "darwin"
+	PlatformWindows = "windows"
 )
 
 const (

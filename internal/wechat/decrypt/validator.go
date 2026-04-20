@@ -108,6 +108,8 @@ func GetSimpleDBFile(platform string, version int) string {
 	switch {
 	case platform == "darwin" && version == 4:
 		return filepath.Join("db_storage", "message", "message_0.db")
+	case platform == "windows" && version == 4:
+		return filepath.Join("db_storage", "message", "message_0.db")
 	}
 	return ""
 

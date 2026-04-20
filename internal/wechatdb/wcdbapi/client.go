@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -510,7 +511,7 @@ func (c *Client) ensureDecrypted(src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	decryptor, err := decrypt.NewDecryptor("darwin", 4)
+	decryptor, err := decrypt.NewDecryptor(runtime.GOOS, 4)
 	if err != nil {
 		f.Close()
 		_ = os.Remove(tmpPath)
