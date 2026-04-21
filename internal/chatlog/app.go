@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sjzar/chatlog/internal/chatlog/ctx"
@@ -510,6 +512,31 @@ func (a *App) settingSelected(i *menu.Item) {
 			description: "配置微信数据文件所在目录",
 			action:      a.settingDataDir,
 		},
+		{
+			name:        "设置关键词触发器",
+			description: "多个关键词使用 ｜ 分割",
+			action:      a.settingHookKeywords,
+		},
+		{
+			name:        "设置触发通知方式",
+			description: "可选 mcp / post / both",
+			action:      a.settingHookNotifyMode,
+		},
+		{
+			name:        "设置触发 POST 地址",
+			description: "通知方式为 post/both 时生效",
+			action:      a.settingHookPostURL,
+		},
+		{
+			name:        "设置触发前文条数",
+			description: "命中关键词前保留条数（默认5）",
+			action:      a.settingHookBeforeCount,
+		},
+		{
+			name:        "设置触发后文条数",
+			description: "命中关键词后保留条数（默认5）",
+			action:      a.settingHookAfterCount,
+		},
 	}
 
 	subMenu := menu.NewSubMenu("设置")
@@ -663,6 +690,105 @@ func (a *App) settingDataDir() {
 		a.mainPages.RemovePage("submenu2")
 	})
 
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
+func (a *App) settingHookKeywords() {
+	formView := form.NewForm("设置关键词触发器")
+	tempKeywords := a.ctx.HookKeywords
+	formView.AddInputField("关键词", tempKeywords, 0, nil, func(text string) {
+		tempKeywords = text
+	})
+	formView.AddButton("保存", func() {
+		a.ctx.SetHookKeywords(tempKeywords)
+		a.mainPages.RemovePage("submenu2")
+		a.showInfo("关键词触发器已更新")
+	})
+	formView.AddButton("取消", func() {
+		a.mainPages.RemovePage("submenu2")
+	})
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
+func (a *App) settingHookNotifyMode() {
+	formView := form.NewForm("设置触发通知方式")
+	tempMode := a.ctx.HookNotifyMode
+	if strings.TrimSpace(tempMode) == "" {
+		tempMode = "mcp"
+	}
+	formView.AddInputField("方式", tempMode, 0, nil, func(text string) {
+		tempMode = text
+	})
+	formView.AddButton("保存", func() {
+		a.ctx.SetHookNotifyMode(tempMode)
+		a.mainPages.RemovePage("submenu2")
+		a.showInfo("通知方式已更新为 " + a.ctx.HookNotifyMode)
+	})
+	formView.AddButton("取消", func() {
+		a.mainPages.RemovePage("submenu2")
+	})
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
+func (a *App) settingHookPostURL() {
+	formView := form.NewForm("设置触发 POST 地址")
+	tempURL := a.ctx.HookPostURL
+	formView.AddInputField("POST URL", tempURL, 0, nil, func(text string) {
+		tempURL = text
+	})
+	formView.AddButton("保存", func() {
+		a.ctx.SetHookPostURL(tempURL)
+		a.mainPages.RemovePage("submenu2")
+		a.showInfo("POST 地址已更新")
+	})
+	formView.AddButton("取消", func() {
+		a.mainPages.RemovePage("submenu2")
+	})
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
+func (a *App) settingHookBeforeCount() {
+	formView := form.NewForm("设置触发前文条数")
+	temp := fmt.Sprintf("%d", a.ctx.HookBeforeCount)
+	if strings.TrimSpace(temp) == "0" {
+		temp = "5"
+	}
+	formView.AddInputField("前文条数", temp, 0, nil, func(text string) { temp = text })
+	formView.AddButton("保存", func() {
+		n := 5
+		if v, err := strconv.Atoi(strings.TrimSpace(temp)); err == nil && v > 0 {
+			n = v
+		}
+		a.ctx.SetHookBeforeCount(n)
+		a.mainPages.RemovePage("submenu2")
+		a.showInfo(fmt.Sprintf("前文条数已设置为 %d", n))
+	})
+	formView.AddButton("取消", func() { a.mainPages.RemovePage("submenu2") })
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
+func (a *App) settingHookAfterCount() {
+	formView := form.NewForm("设置触发后文条数")
+	temp := fmt.Sprintf("%d", a.ctx.HookAfterCount)
+	if strings.TrimSpace(temp) == "0" {
+		temp = "5"
+	}
+	formView.AddInputField("后文条数", temp, 0, nil, func(text string) { temp = text })
+	formView.AddButton("保存", func() {
+		n := 5
+		if v, err := strconv.Atoi(strings.TrimSpace(temp)); err == nil && v > 0 {
+			n = v
+		}
+		a.ctx.SetHookAfterCount(n)
+		a.mainPages.RemovePage("submenu2")
+		a.showInfo(fmt.Sprintf("后文条数已设置为 %d", n))
+	})
+	formView.AddButton("取消", func() { a.mainPages.RemovePage("submenu2") })
 	a.mainPages.AddPage("submenu2", formView, true, true)
 	a.SetFocus(formView)
 }

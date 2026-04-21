@@ -3,27 +3,21 @@ package http
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/rs/zerolog/log"
 
 	"github.com/sjzar/chatlog/internal/chatlog/conf"
 	"github.com/sjzar/chatlog/internal/errors"
 	"github.com/sjzar/chatlog/internal/model"
-	"github.com/sjzar/chatlog/pkg/util/dat2img"
-	"github.com/sjzar/chatlog/pkg/util/silk"
 	"github.com/sjzar/chatlog/pkg/version"
 )
 
@@ -34,8 +28,6 @@ func (s *Service) initMCPServer() {
 		server.WithPromptCapabilities(true),
 	)
 	s.mcpServer.AddTool(CurrentTimeTool, s.handleMCPCurrentTime)
-	s.mcpServer.AddTool(GetMediaContentTool, s.handleMCPGetMediaContent)
-	s.mcpServer.AddTool(OCRImageMessageTool, s.handleMCPOCRImageMessage)
 	s.mcpServer.AddTool(SendWebhookNotificationTool, s.handleMCPSendWebhookNotification)
 	s.mcpServer.AddTool(GetUserProfileTool, s.handleMCPGetUserProfile)
 	s.mcpServer.AddTool(SearchSharedFilesTool, s.handleMCPSearchSharedFiles)
@@ -101,20 +93,6 @@ var SendWebhookNotificationTool = mcp.NewTool(
 	mcp.WithString("url", mcp.Description("Webhook 接收地址"), mcp.Required()),
 	mcp.WithString("message", mcp.Description("要发送的通知内容或分析结果"), mcp.Required()),
 	mcp.WithString("level", mcp.Description("通知级别 (info, warn, error)")),
-)
-
-var OCRImageMessageTool = mcp.NewTool(
-	"ocr_image_message",
-	mcp.WithDescription(`对特定图片消息进行 OCR 解析以提取其中的文字。`),
-	mcp.WithString("talker", mcp.Description("消息所在的对话方（联系人 ID 或群 ID）"), mcp.Required()),
-	mcp.WithNumber("message_id", mcp.Description("消息的唯一 ID (Seq)"), mcp.Required()),
-)
-
-var GetMediaContentTool = mcp.NewTool(
-	"get_media_content",
-	mcp.WithDescription(`根据消息 ID 获取解码后的媒体文件内容（图片或语音）。当聊天记录中显示 [图片] 或 [语音] 且用户需要查看具体内容或进行分析时使用此工具。`),
-	mcp.WithString("talker", mcp.Description("消息所在的对话方（联系人 ID 或群 ID）"), mcp.Required()),
-	mcp.WithNumber("message_id", mcp.Description("消息的唯一 ID (Seq)"), mcp.Required()),
 )
 
 var CurrentTimeTool = mcp.NewTool(
@@ -234,194 +212,6 @@ func (s *Service) handleMCPCurrentTime(ctx context.Context, request mcp.CallTool
 			mcp.TextContent{
 				Type: "text",
 				Text: time.Now().Local().Format(time.RFC3339),
-			},
-		},
-	}, nil
-}
-
-type GetMediaContentRequest struct {
-	Talker    string `json:"talker"`
-	MessageID int64  `json:"message_id"`
-}
-
-func (s *Service) handleMCPGetMediaContent(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var req GetMediaContentRequest
-	if err := request.BindArguments(&req); err != nil {
-		return errors.ErrMCPTool(err), nil
-	}
-
-	msg, err := s.db.GetMessage(req.Talker, req.MessageID)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get message")
-		return errors.ErrMCPTool(err), nil
-	}
-
-	switch msg.Type {
-	case model.MessageTypeImage:
-		return s.handleMCPGetImage(ctx, msg)
-	case model.MessageTypeVoice:
-		return s.handleMCPGetVoice(ctx, msg)
-	default:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("暂不支持的消息类型: %d", msg.Type),
-				},
-			},
-		}, nil
-	}
-}
-
-func (s *Service) handleMCPOCRImageMessage(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var req GetMediaContentRequest
-	if err := request.BindArguments(&req); err != nil {
-		return errors.ErrMCPTool(err), nil
-	}
-
-	msg, err := s.db.GetMessage(req.Talker, req.MessageID)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get message")
-		return errors.ErrMCPTool(err), nil
-	}
-
-	if msg.Type != model.MessageTypeImage {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: "该消息不是图片消息，无法进行 OCR 解析。",
-				},
-			},
-		}, nil
-	}
-
-	result, err := s.handleMCPGetImage(ctx, msg)
-	if err != nil {
-		return result, err
-	}
-
-	// 在结果中添加一条提示信息
-	result.Content = append([]mcp.Content{
-		mcp.TextContent{
-			Type: "text",
-			Text: "已提取图片数据，请直接分析该图片内容并提取文字 (OCR)。",
-		},
-	}, result.Content...)
-
-	return result, nil
-}
-
-func (s *Service) handleMCPGetImage(ctx context.Context, msg *model.Message) (*mcp.CallToolResult, error) {
-	key, ok := msg.Contents["md5"].(string)
-	if !ok {
-		// 尝试从 path 获取
-		key, _ = msg.Contents["path"].(string)
-	}
-
-	if key == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: "无法找到图片标识符",
-				},
-			},
-		}, nil
-	}
-
-	media, err := s.db.GetMedia("image", key)
-	if err != nil {
-		return errors.ErrMCPTool(err), nil
-	}
-
-	absolutePath := filepath.Join(s.conf.GetDataDir(), media.Path)
-	b, err := os.ReadFile(absolutePath)
-	if err != nil {
-		return errors.ErrMCPTool(err), nil
-	}
-
-	var data []byte
-	var mimeType string
-
-	if strings.HasSuffix(strings.ToLower(media.Path), ".dat") {
-		out, ext, err := dat2img.Dat2Image(b)
-		if err != nil {
-			return errors.ErrMCPTool(err), nil
-		}
-		data = out
-		switch ext {
-		case "png":
-			mimeType = "image/png"
-		case "gif":
-			mimeType = "image/gif"
-		case "bmp":
-			mimeType = "image/bmp"
-		default:
-			mimeType = "image/jpeg"
-		}
-	} else {
-		data = b
-		ext := strings.ToLower(filepath.Ext(media.Path))
-		switch ext {
-		case ".png":
-			mimeType = "image/png"
-		case ".gif":
-			mimeType = "image/gif"
-		case ".bmp":
-			mimeType = "image/bmp"
-		default:
-			mimeType = "image/jpeg"
-		}
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.ImageContent{
-				Type:     "image",
-				Data:     base64.StdEncoding.EncodeToString(data),
-				MIMEType: mimeType,
-			},
-		},
-	}, nil
-}
-
-func (s *Service) handleMCPGetVoice(ctx context.Context, msg *model.Message) (*mcp.CallToolResult, error) {
-	key, ok := msg.Contents["voice"].(string)
-	if !ok {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: "无法找到语音标识符",
-				},
-			},
-		}, nil
-	}
-
-	media, err := s.db.GetMedia("voice", key)
-	if err != nil {
-		return errors.ErrMCPTool(err), nil
-	}
-
-	out, err := silk.Silk2MP3(media.Data)
-	if err != nil {
-		// 如果转换失败，返回 base64 编码的原始数据
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("语音转换失败: %v。原始语音数据(base64): %s", err, base64.StdEncoding.EncodeToString(media.Data)),
-				},
-			},
-		}, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("语音已转换为 MP3 格式。数据(base64): %s", base64.StdEncoding.EncodeToString(out)),
 			},
 		},
 	}, nil

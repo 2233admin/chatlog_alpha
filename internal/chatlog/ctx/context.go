@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,10 +49,15 @@ type Context struct {
 	HTTPAddr    string
 
 	// 自动解密
-	AutoDecrypt bool
-	LastSession time.Time
-	WalEnabled  bool
+	AutoDecrypt         bool
+	LastSession         time.Time
+	WalEnabled          bool
 	AutoDecryptDebounce int
+	HookKeywords        string
+	HookNotifyMode      string
+	HookPostURL         string
+	HookBeforeCount     int
+	HookAfterCount      int
 
 	// 当前选中的微信实例
 	Current *wechat.Account
@@ -107,6 +113,11 @@ func (c *Context) SwitchHistory(account string) {
 		c.HTTPAddr = history.HTTPAddr
 		c.WalEnabled = history.WalEnabled
 		c.AutoDecryptDebounce = history.AutoDecryptDebounce
+		c.HookKeywords = history.HookKeywords
+		c.HookNotifyMode = history.HookNotifyMode
+		c.HookPostURL = history.HookPostURL
+		c.HookBeforeCount = history.HookBeforeCount
+		c.HookAfterCount = history.HookAfterCount
 	} else {
 		c.Account = ""
 		c.Platform = ""
@@ -120,6 +131,11 @@ func (c *Context) SwitchHistory(account string) {
 		c.HTTPAddr = ""
 		c.WalEnabled = false
 		c.AutoDecryptDebounce = 0
+		c.HookKeywords = ""
+		c.HookNotifyMode = conf.HookNotifyMCP
+		c.HookPostURL = ""
+		c.HookBeforeCount = 5
+		c.HookAfterCount = 5
 	}
 }
 
@@ -207,8 +223,28 @@ func (c *Context) GetHTTPAddr() string {
 	return c.HTTPAddr
 }
 
-func (c *Context) GetWebhook() *conf.Webhook {
-	return c.conf.Webhook
+func (c *Context) GetMessageHook() *conf.MessageHook {
+	mode := strings.ToLower(strings.TrimSpace(c.HookNotifyMode))
+	switch mode {
+	case conf.HookNotifyMCP, conf.HookNotifyPost, conf.HookNotifyBoth:
+	default:
+		mode = conf.HookNotifyMCP
+	}
+	before := c.HookBeforeCount
+	after := c.HookAfterCount
+	if before <= 0 {
+		before = 5
+	}
+	if after <= 0 {
+		after = 5
+	}
+	return &conf.MessageHook{
+		Keywords:    c.HookKeywords,
+		NotifyMode:  mode,
+		PostURL:     c.HookPostURL,
+		BeforeCount: before,
+		AfterCount:  after,
+	}
 }
 
 func (c *Context) GetSaveDecryptedMedia() bool {
@@ -298,23 +334,90 @@ func (c *Context) SetAutoDecryptDebounce(debounce int) {
 	c.UpdateConfig()
 }
 
+func (c *Context) SetHookKeywords(keywords string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.HookKeywords == keywords {
+		return
+	}
+	c.HookKeywords = keywords
+	c.UpdateConfig()
+}
+
+func (c *Context) SetHookNotifyMode(mode string) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case conf.HookNotifyMCP, conf.HookNotifyPost, conf.HookNotifyBoth:
+	default:
+		mode = conf.HookNotifyMCP
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.HookNotifyMode == mode {
+		return
+	}
+	c.HookNotifyMode = mode
+	c.UpdateConfig()
+}
+
+func (c *Context) SetHookPostURL(url string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.HookPostURL == url {
+		return
+	}
+	c.HookPostURL = url
+	c.UpdateConfig()
+}
+
+func (c *Context) SetHookBeforeCount(n int) {
+	if n <= 0 {
+		n = 5
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.HookBeforeCount == n {
+		return
+	}
+	c.HookBeforeCount = n
+	c.UpdateConfig()
+}
+
+func (c *Context) SetHookAfterCount(n int) {
+	if n <= 0 {
+		n = 5
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.HookAfterCount == n {
+		return
+	}
+	c.HookAfterCount = n
+	c.UpdateConfig()
+}
+
 // 更新配置
 func (c *Context) UpdateConfig() {
 
 	pconf := conf.ProcessConfig{
-		Type:        "wechat",
-		Account:     c.Account,
-		Platform:    c.Platform,
-		Version:     c.Version,
-		FullVersion: c.FullVersion,
-		DataDir:     c.DataDir,
-		DataKey:     c.DataKey,
-		ImgKey:      c.ImgKey,
-		WorkDir:     c.WorkDir,
-		HTTPEnabled: c.HTTPEnabled,
-		HTTPAddr:    c.HTTPAddr,
-		WalEnabled:  c.WalEnabled,
+		Type:                "wechat",
+		Account:             c.Account,
+		Platform:            c.Platform,
+		Version:             c.Version,
+		FullVersion:         c.FullVersion,
+		DataDir:             c.DataDir,
+		DataKey:             c.DataKey,
+		ImgKey:              c.ImgKey,
+		WorkDir:             c.WorkDir,
+		HTTPEnabled:         c.HTTPEnabled,
+		HTTPAddr:            c.HTTPAddr,
+		WalEnabled:          c.WalEnabled,
 		AutoDecryptDebounce: c.AutoDecryptDebounce,
+		HookKeywords:        c.HookKeywords,
+		HookNotifyMode:      c.HookNotifyMode,
+		HookPostURL:         c.HookPostURL,
+		HookBeforeCount:     c.HookBeforeCount,
+		HookAfterCount:      c.HookAfterCount,
 	}
 
 	if c.conf.History == nil {

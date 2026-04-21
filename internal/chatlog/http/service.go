@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/sjzar/chatlog/internal/chatlog/database"
+	"github.com/sjzar/chatlog/internal/chatlog/messagehook"
 	"github.com/sjzar/chatlog/internal/errors"
 )
 
@@ -69,6 +71,7 @@ func NewService(conf Config, db *database.Service) *Service {
 		router:       router,
 		md5PathCache: make(map[string]string),
 	}
+	s.db.SetMessageHookNotifier(s.pushMessageHookEvent)
 
 	s.initMCPServer()
 	s.initRouter()
@@ -126,4 +129,21 @@ func (s *Service) Stop() error {
 
 func (s *Service) GetRouter() *gin.Engine {
 	return s.router
+}
+
+func (s *Service) pushMessageHookEvent(evt messagehook.Event) {
+	params := map[string]any{}
+	raw, err := json.Marshal(evt)
+	if err == nil {
+		_ = json.Unmarshal(raw, &params)
+	}
+	if len(params) == 0 {
+		params = map[string]any{
+			"created_at":  evt.CreatedAt,
+			"keyword":     evt.Keyword,
+			"talker":      evt.Talker,
+			"trigger_seq": evt.TriggerSeq,
+		}
+	}
+	s.mcpServer.SendNotificationToAllClients("notifications/chatlog/keyword_hit", params)
 }

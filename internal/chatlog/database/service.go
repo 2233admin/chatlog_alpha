@@ -2,12 +2,13 @@ package database
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/sjzar/chatlog/internal/chatlog/conf"
-	"github.com/sjzar/chatlog/internal/chatlog/webhook"
+	"github.com/sjzar/chatlog/internal/chatlog/messagehook"
 	"github.com/sjzar/chatlog/internal/model"
 	"github.com/sjzar/chatlog/internal/wechatdb"
 )
@@ -20,12 +21,14 @@ const (
 )
 
 type Service struct {
-	State         int
-	StateMsg      string
-	conf          Config
-	db            *wechatdb.DB
-	webhook       *webhook.Service
-	webhookCancel context.CancelFunc
+	State      int
+	StateMsg   string
+	conf       Config
+	db         *wechatdb.DB
+	hookSvc    *messagehook.Service
+	hookCancel context.CancelFunc
+	notifierMu sync.RWMutex
+	notifier   func(messagehook.Event)
 }
 
 type Config interface {
@@ -34,14 +37,13 @@ type Config interface {
 	GetDataKey() string
 	GetPlatform() string
 	GetVersion() int
-	GetWebhook() *conf.Webhook
+	GetMessageHook() *conf.MessageHook
 	GetWalEnabled() bool
 }
 
 func NewService(conf Config) *Service {
 	return &Service{
-		conf:    conf,
-		webhook: webhook.New(conf),
+		conf: conf,
 	}
 }
 
@@ -59,7 +61,7 @@ func (s *Service) Start() error {
 	}
 	s.SetReady()
 	s.db = db
-	s.initWebhook()
+	s.initMessageHook()
 	return nil
 }
 
@@ -69,10 +71,11 @@ func (s *Service) Stop() error {
 	}
 	s.SetInit()
 	s.db = nil
-	if s.webhookCancel != nil {
-		s.webhookCancel()
-		s.webhookCancel = nil
+	if s.hookCancel != nil {
+		s.hookCancel()
+		s.hookCancel = nil
 	}
+	s.hookSvc = nil
 	return nil
 }
 
@@ -158,20 +161,15 @@ func (s *Service) ExecuteSQL(group, file, query string) ([]map[string]interface{
 	return s.db.ExecuteSQL(group, file, query)
 }
 
-func (s *Service) initWebhook() error {
-	if s.webhook == nil {
+func (s *Service) initMessageHook() error {
+	if s.db == nil {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.webhookCancel = cancel
-	hooks := s.webhook.GetHooks(ctx, s.db)
-	for _, hook := range hooks {
-		log.Info().Msgf("set callback %#v", hook)
-		if err := s.db.SetCallback(hook.Group(), hook.Callback); err != nil {
-			log.Error().Err(err).Msgf("set callback %#v failed", hook)
-			return err
-		}
-	}
+	s.hookCancel = cancel
+	s.hookSvc = messagehook.New(s.conf, s.db, s.emitHookEvent)
+	go s.hookSvc.Run(ctx)
+	log.Info().Msg("message hook service started")
 	return nil
 }
 
@@ -179,9 +177,23 @@ func (s *Service) initWebhook() error {
 func (s *Service) Close() {
 	// Add cleanup code if needed
 	s.db.Close()
-	if s.webhookCancel != nil {
-		s.webhookCancel()
-		s.webhookCancel = nil
+	if s.hookCancel != nil {
+		s.hookCancel()
+		s.hookCancel = nil
+	}
+}
+
+func (s *Service) SetMessageHookNotifier(fn func(messagehook.Event)) {
+	s.notifierMu.Lock()
+	defer s.notifierMu.Unlock()
+	s.notifier = fn
+}
+
+func (s *Service) emitHookEvent(evt messagehook.Event) {
+	s.notifierMu.RLock()
+	defer s.notifierMu.RUnlock()
+	if s.notifier != nil {
+		s.notifier(evt)
 	}
 }
 

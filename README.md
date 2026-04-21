@@ -41,19 +41,30 @@ go build -o chatlog ./cmd/chatlog
 ### 常用命令（CLI）
 
 ```bash
-chatlog server -a :5030 -p darwin -v 4 -d <wechat_data_dir>
-chatlog server -a :5030 -p windows -v 4 -d <wechat_data_dir>
+chatlog http list
 ```
 
 ```bash
-chatlog decrypt -p darwin -v 4 -d <wechat_data_dir> -k <data_key>
-chatlog decrypt -p windows -v 4 -d <wechat_data_dir> -k <data_key>
+chatlog http call --endpoint history --query chat=<会话ID> --query limit=100 --query format=json
 ```
 
+### HTTP 接口命令行调用（全接口）
+
 ```bash
-chatlog batch-decrypt --data-dir <wechat_data_dir> --data-key <data_key> --platform darwin --version 4
-chatlog batch-decrypt --data-dir <wechat_data_dir> --data-key <data_key> --platform windows --version 4
+# 列出所有可调用 HTTP 接口别名
+chatlog http list
+
+# 按别名调用（示例：聊天记录）
+chatlog http call --endpoint history --query chat=<会话ID> --query limit=100 --query format=json
+
+# 按原始路径调用（示例：执行 SQL）
+chatlog http call --path /api/v1/db/query --query group=message --query file=message_0.db --query sql='select count(*) c from MSG'
+
+# 媒体接口（模板路径参数）
+chatlog http call --endpoint image --path-param key=<image_key>
 ```
+
+Skill 文档：`skills/chatlog-http-cli/SKILL.md`
 
 ## macOS 权限说明（务必阅读）
 
@@ -132,8 +143,44 @@ ls -l "$BIN_PATH"
 端点：
 
 - `ANY /mcp`
+- `ANY /mcp/`
 - `ANY /sse`
 - `ANY /message`
+
+### Hermes Agent 接入
+
+本项目可作为 Hermes 的 HTTP MCP Server 使用。
+
+1. 先确保 chatlog HTTP 服务已启动（默认 `127.0.0.1:5030`）。
+
+2. 在 `~/.hermes/config.yaml` 增加 MCP 配置：
+
+```yaml
+mcp_servers:
+  chatlog:
+    url: "http://127.0.0.1:5030/mcp"
+    enabled: true
+    connect_timeout: 60
+    timeout: 120
+    tools:
+      resources: false
+      prompts: false
+```
+
+3. 或使用 Hermes CLI 直接添加：
+
+```bash
+hermes mcp add chatlog --url http://127.0.0.1:5030/mcp
+hermes mcp test chatlog
+```
+
+4. 在 Hermes 会话中执行：
+
+```text
+/reload-mcp
+```
+
+加载后，工具名称会以 `mcp_chatlog_` 前缀出现。
 
 ## 安全与隐私
 

@@ -29,7 +29,7 @@ var rootCmd = &cobra.Command{
 	Use:     "chatlog",
 	Short:   "chatlog",
 	Long:    `chatlog`,
-	Example: `chatlog`,
+	Example: `chatlog http list`,
 	Args:    cobra.MinimumNArgs(0),
 	CompletionOptions: cobra.CompletionOptions{
 		HiddenDefaultCmd: true,

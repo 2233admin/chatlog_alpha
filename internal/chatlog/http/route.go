@@ -96,6 +96,9 @@ func (s *Service) initMCPRouter() {
 	s.router.Any("/mcp", func(c *gin.Context) {
 		s.mcpStreamableServer.ServeHTTP(c.Writer, c.Request)
 	})
+	s.router.Any("/mcp/", func(c *gin.Context) {
+		s.mcpStreamableServer.ServeHTTP(c.Writer, c.Request)
+	})
 	s.router.Any("/sse", func(c *gin.Context) {
 		s.mcpSSEServer.ServeHTTP(c.Writer, c.Request)
 	})

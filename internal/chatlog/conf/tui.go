@@ -4,27 +4,31 @@ type TUIConfig struct {
 	ConfigDir   string          `mapstructure:"-" json:"config_dir"`
 	LastAccount string          `mapstructure:"last_account" json:"last_account"`
 	History     []ProcessConfig `mapstructure:"history" json:"history"`
-	Webhook     *Webhook        `mapstructure:"webhook" json:"webhook"`
 }
 
 var TUIDefaults = map[string]any{}
 
 type ProcessConfig struct {
-	Type        string `mapstructure:"type" json:"type"`
-	Account     string `mapstructure:"account" json:"account"`
-	Platform    string `mapstructure:"platform" json:"platform"`
-	Version     int    `mapstructure:"version" json:"version"`
-	FullVersion string `mapstructure:"full_version" json:"full_version"`
-	DataDir     string `mapstructure:"data_dir" json:"data_dir"`
-	DataKey     string `mapstructure:"data_key" json:"data_key"`
-	ImgKey      string `mapstructure:"img_key" json:"img_key"`
-	WorkDir     string `mapstructure:"work_dir" json:"work_dir"`
-	HTTPEnabled bool   `mapstructure:"http_enabled" json:"http_enabled"`
-	HTTPAddr    string `mapstructure:"http_addr" json:"http_addr"`
-	WalEnabled  bool   `mapstructure:"wal_enabled" json:"wal_enabled"`
-	AutoDecryptDebounce int `mapstructure:"auto_decrypt_debounce" json:"auto_decrypt_debounce"`
-	LastTime    int64  `mapstructure:"last_time" json:"last_time"`
-	Files       []File `mapstructure:"files" json:"files"`
+	Type                string `mapstructure:"type" json:"type"`
+	Account             string `mapstructure:"account" json:"account"`
+	Platform            string `mapstructure:"platform" json:"platform"`
+	Version             int    `mapstructure:"version" json:"version"`
+	FullVersion         string `mapstructure:"full_version" json:"full_version"`
+	DataDir             string `mapstructure:"data_dir" json:"data_dir"`
+	DataKey             string `mapstructure:"data_key" json:"data_key"`
+	ImgKey              string `mapstructure:"img_key" json:"img_key"`
+	WorkDir             string `mapstructure:"work_dir" json:"work_dir"`
+	HTTPEnabled         bool   `mapstructure:"http_enabled" json:"http_enabled"`
+	HTTPAddr            string `mapstructure:"http_addr" json:"http_addr"`
+	WalEnabled          bool   `mapstructure:"wal_enabled" json:"wal_enabled"`
+	AutoDecryptDebounce int    `mapstructure:"auto_decrypt_debounce" json:"auto_decrypt_debounce"`
+	HookKeywords        string `mapstructure:"hook_keywords" json:"hook_keywords"`
+	HookNotifyMode      string `mapstructure:"hook_notify_mode" json:"hook_notify_mode"`
+	HookPostURL         string `mapstructure:"hook_post_url" json:"hook_post_url"`
+	HookBeforeCount     int    `mapstructure:"hook_before_count" json:"hook_before_count"`
+	HookAfterCount      int    `mapstructure:"hook_after_count" json:"hook_after_count"`
+	LastTime            int64  `mapstructure:"last_time" json:"last_time"`
+	Files               []File `mapstructure:"files" json:"files"`
 }
 
 type File struct {

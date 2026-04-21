@@ -7,10 +7,10 @@
 *.dll
 *.so
 *.dylib
-chatlog
-chatlog.exe
-chatlog-mac
-chatlog-*
+/chatlog
+/chatlog.exe
+/chatlog-mac
+/chatlog-*
 
 # Test binary, built with `go test -c`
 *.test
