@@ -29,6 +29,7 @@ const (
 type Config interface {
 	GetMessageHook() *conf.MessageHook
 	GetDataDir() string
+	GetHTTPAddr() string
 }
 
 type ContextMessage struct {
@@ -370,6 +371,12 @@ func (s *Service) resolveTriggerMedia(trigger *model.Message) ([]string, []strin
 		return nil, nil, nil
 	}
 	for _, key := range keys {
+		path, err := s.downloadTriggerMedia(mediaType, key)
+		if err == nil && path != "" {
+			return []string{path}, []string{path}, nil
+		}
+	}
+	for _, key := range keys {
 		media, err := s.db.GetMedia(mediaType, key)
 		if err != nil || media == nil {
 			continue
@@ -402,6 +409,49 @@ func (s *Service) resolveTriggerMedia(trigger *model.Message) ([]string, []strin
 		}
 	}
 	return nil, nil, fmt.Errorf("media file not found")
+}
+
+func (s *Service) downloadTriggerMedia(mediaType, key string) (string, error) {
+	url := s.buildTriggerMediaURL(mediaType, key)
+	if url == "" {
+		return "", fmt.Errorf("media url unavailable")
+	}
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("media download failed: status=%d", resp.StatusCode)
+	}
+	tmp, err := os.CreateTemp("", "chatlog-weixin-media-*"+mediaSuffix(mediaType))
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmp.ReadFrom(resp.Body); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	return tmp.Name(), nil
+}
+
+func (s *Service) buildTriggerMediaURL(mediaType, key string) string {
+	addr := strings.TrimSpace(s.conf.GetHTTPAddr())
+	if addr == "" || strings.TrimSpace(key) == "" {
+		return ""
+	}
+	host := addr
+	if strings.HasPrefix(host, "0.0.0.0:") {
+		host = "127.0.0.1:" + strings.TrimPrefix(host, "0.0.0.0:")
+	} else if strings.HasPrefix(host, ":") {
+		host = "127.0.0.1" + host
+	}
+	return "http://" + host + "/" + strings.TrimSpace(mediaType) + "/" + strings.TrimSpace(key)
 }
 
 func extractTriggerMediaRef(m *model.Message) (string, []string) {
@@ -456,6 +506,21 @@ func voiceExtForData(data []byte) string {
 		return ".amr"
 	}
 	return ".silk"
+}
+
+func mediaSuffix(mediaType string) string {
+	switch mediaType {
+	case "image":
+		return ".jpg"
+	case "video":
+		return ".mp4"
+	case "voice":
+		return ".silk"
+	case "file":
+		return ".bin"
+	default:
+		return ".dat"
+	}
 }
 
 func (s *Service) matchRules(m *model.Message, content string, keywords []string, forwardContacts, forwardChatRooms map[string]struct{}, forwardAll bool) []matchedRule {

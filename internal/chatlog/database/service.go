@@ -34,6 +34,7 @@ type Service struct {
 type Config interface {
 	GetWorkDir() string
 	GetDataDir() string
+	GetHTTPAddr() string
 	GetDataKey() string
 	GetPlatform() string
 	GetVersion() int
